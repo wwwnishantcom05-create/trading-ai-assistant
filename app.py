@@ -1,607 +1,412 @@
-# app.py - ENHANCED WITH UPLOADS (Streamlit Cloud Compatible)
-import streamlit as st
+#!/usr/bin/env python3
+"""
+Streamlit Dependency Fixer Script
+Fixes the rich<14 compatibility issue with streamlit
+Usage: python fix_streamlit_deps.py
+"""
+
+import subprocess
+import sys
+import json
+import re
 import os
-import base64
-from datetime import datetime
-from io import BytesIO
+from typing import Optional, List, Dict
 
-# Page configuration
-st.set_page_config(
-    page_title="Trading AI Assistant",
-    page_icon="📈",
-    layout="wide"
-)
-
-# Initialize session state
-if 'knowledge' not in st.session_state:
-    st.session_state.knowledge = {}
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = []
-if 'analyses' not in st.session_state:
-    st.session_state.analyses = []
-if 'uploaded_files' not in st.session_state:
-    st.session_state.uploaded_files = []
-
-# Title
-st.title("📈 Trading AI Assistant")
-st.markdown("### Upload Charts • Add PDFs • Get AI Trading Insights")
-
-# Sidebar
-with st.sidebar:
-    st.header("⚙️ Configuration")
+def run_command(cmd: str, check: bool = True, capture: bool = True) -> Optional[subprocess.CompletedProcess]:
+    """Run a shell command and return result"""
+    print(f"\n{'='*60}")
+    print(f"Running: {cmd}")
+    print(f"{'='*60}")
     
-    # API Key input
-    openai_api_key = st.text_input("OpenAI API Key", type="password")
-    if openai_api_key:
-        os.environ["OPENAI_API_KEY"] = openai_api_key
+    try:
+        if capture:
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=check)
+        else:
+            result = subprocess.run(cmd, shell=True, check=check)
+        return result
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Command failed: {e}")
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Error details: {e.stderr[:500]}")
+        return None
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return None
+
+def check_python_environment():
+    """Check Python and pip versions"""
+    print("\n🔍 Checking Python environment...")
+    
+    # Python version
+    result = run_command("python --version")
+    if result and result.stdout:
+        print(f"Python: {result.stdout.strip()}")
+    
+    # Pip version
+    result = run_command("pip --version")
+    if result and result.stdout:
+        pip_version = result.stdout.split()[1]
+        print(f"Pip: {pip_version}")
+        
+        # Check if pip needs update
+        if "24.0" in pip_version:
+            print("⚠️  Pip is outdated (24.0). Consider updating with: pip install --upgrade pip")
+
+def get_installed_packages() -> Dict[str, str]:
+    """Get all installed packages with versions"""
+    print("\n📦 Checking installed packages...")
+    
+    packages = {}
+    result = run_command("pip list --format=json")
+    
+    if result and result.stdout:
         try:
-            import openai
-            openai.api_key = openai_api_key
-            OPENAI_AVAILABLE = True
-        except:
-            OPENAI_AVAILABLE = False
-    else:
-        OPENAI_AVAILABLE = False
+            installed_packages = json.loads(result.stdout)
+            for pkg in installed_packages:
+                packages[pkg['name'].lower()] = pkg['version']
+            
+            print(f"Found {len(packages)} installed packages")
+            return packages
+        except json.JSONDecodeError:
+            # Fallback to text parsing
+            result = run_command("pip list")
+            if result and result.stdout:
+                lines = result.stdout.strip().split('\n')[2:]  # Skip headers
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        packages[parts[0].lower()] = parts[1]
     
-    st.markdown("---")
-    
-    # Mode selection
-    mode = st.radio(
-        "Select Mode:",
-        ["📤 Upload Files", "📈 Analyze Charts", "📚 Learn from PDFs", "💬 Chat with AI"]
-    )
-    
-    st.markdown("---")
-    st.info("""
-    **Features:**
-    • Upload trading screenshots
-    • Add PDF/text files
-    • AI chart analysis
-    • Learn from materials
-    • Chat with trading AI
-    """)
+    return packages
 
-# Main app logic
-if mode == "📤 Upload Files":
-    st.header("📤 Upload Trading Files")
+def check_dependency_conflicts():
+    """Check for specific dependency conflicts"""
+    print("\n⚡ Checking for dependency conflicts...")
     
-    col1, col2 = st.columns([2, 1])
+    packages = get_installed_packages()
     
-    with col1:
-        st.subheader("Upload Files")
-        
-        # File uploader for multiple types
-        uploaded_files = st.file_uploader(
-            "Upload trading files:",
-            type=["png", "jpg", "jpeg", "pdf", "txt"],
-            accept_multiple_files=True,
-            help="Upload charts (PNG/JPG), PDFs, or text files"
-        )
-        
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                # Store file info
-                file_info = {
-                    "name": uploaded_file.name,
-                    "type": uploaded_file.type,
-                    "size": f"{len(uploaded_file.getvalue()) / 1024:.1f} KB",
-                    "upload_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                # Check if already uploaded
-                if not any(f["name"] == uploaded_file.name for f in st.session_state.uploaded_files):
-                    st.session_state.uploaded_files.append(file_info)
-                    
-                    # Store file content in session state
-                    file_content_key = f"file_{uploaded_file.name}"
-                    st.session_state[file_content_key] = uploaded_file.getvalue()
-                
-                # Show file info
-                file_ext = uploaded_file.name.split('.')[-1].upper()
-                if file_ext in ['PNG', 'JPG', 'JPEG']:
-                    st.success(f"📸 {uploaded_file.name} - Chart screenshot")
-                    # Display image preview
-                    from PIL import Image
-                    try:
-                        image = Image.open(uploaded_file)
-                        st.image(image, caption=f"Preview: {uploaded_file.name}", width=300)
-                    except:
-                        st.info("Image preview not available")
-                elif file_ext == 'PDF':
-                    st.info(f"📄 {uploaded_file.name} - PDF document")
-                elif file_ext == 'TXT':
-                    st.warning(f"📝 {uploaded_file.name} - Text file")
-        
-        if st.button("🔄 Process Uploaded Files", type="primary") and st.session_state.uploaded_files:
-            with st.spinner("Processing files..."):
-                for file_info in st.session_state.uploaded_files:
-                    st.success(f"✅ {file_info['name']} ready for analysis")
-            
-            st.balloons()
+    conflicts = []
     
-    with col2:
-        st.subheader("📁 File Library")
-        if st.session_state.uploaded_files:
-            for i, file_info in enumerate(st.session_state.uploaded_files):
-                with st.expander(f"📄 {file_info['name']}"):
-                    st.write(f"**Type:** {file_info['type']}")
-                    st.write(f"**Size:** {file_info['size']}")
-                    st.write(f"**Uploaded:** {file_info['upload_time']}")
-                    
-                    # Quick actions
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        if file_info['name'].lower().endswith(('png', 'jpg', 'jpeg')):
-                            if st.button("🔍 Analyze", key=f"analyze_{i}"):
-                                st.session_state.selected_chart = file_info['name']
-                                st.rerun()
-                    with col_b:
-                        if st.button("🗑️ Remove", key=f"remove_{i}"):
-                            st.session_state.uploaded_files.pop(i)
-                            st.rerun()
-        else:
-            st.info("""
-            **No files uploaded yet.**
-            
-            **Supported files:**
-            • Chart screenshots (PNG/JPG)
-            • PDF documents
-            • Text files
-            
-            **Tips:**
-            • Clear, well-lit charts work best
-            • PDFs should have extractable text
-            • Text files for quick notes
-            """)
+    # Check streamlit and rich
+    streamlit_ver = packages.get('streamlit')
+    rich_ver = packages.get('rich')
+    
+    if streamlit_ver and rich_ver:
+        print(f"Streamlit version: {streamlit_ver}")
+        print(f"Rich version: {rich_ver}")
+        
+        # Check if rich version is incompatible
+        # Streamlit 1.28.1 requires rich<14
+        if rich_ver.startswith('14') and streamlit_ver.startswith('1.28'):
+            conflicts.append({
+                'package': 'rich',
+                'installed': rich_ver,
+                'required': '<14',
+                'reason': f'Streamlit {streamlit_ver} requires rich<14'
+            })
+    
+    # Check other common conflicts
+    for pkg, ver in packages.items():
+        if 'markdown-it' in pkg:
+            # Check markdown-it-py
+            pass
+    
+    return conflicts
 
-elif mode == "📈 Analyze Charts":
-    st.header("📈 Analyze Trading Charts")
+def fix_rich_dependency():
+    """Fix the rich dependency to be compatible with streamlit"""
+    print("\n🔧 Fixing rich dependency...")
     
-    # Check for uploaded charts
-    chart_files = [f for f in st.session_state.uploaded_files 
-                   if f['name'].lower().endswith(('png', 'jpg', 'jpeg'))]
+    # Option 1: Downgrade rich to compatible version
+    print("\n1️⃣ Downgrading rich to compatible version (<14)...")
     
-    if not chart_files:
-        st.warning("""
-        ⚠️ **No chart screenshots uploaded yet.**
-        
-        Please go to **"Upload Files"** mode first and upload your trading chart screenshots.
-        """)
-        
-        # Alternative: Text description
-        st.subheader("📝 Or Describe Your Chart")
-        chart_description = st.text_area(
-            "Describe what you see on your chart:",
-            height=150,
-            placeholder="Example: EUR/USD 1H chart showing bullish trend with strong support at 1.0850 and resistance at 1.0950. Volume is increasing on upticks..."
-        )
-        
-        if chart_description:
-            st.info("📋 Using text description for analysis")
-            selected_chart = "Text Description"
-        else:
-            selected_chart = None
+    # First uninstall current rich
+    result = run_command("pip uninstall rich -y", check=False)
+    
+    # Install compatible version
+    result = run_command("pip install \"rich<14,>=10.14.0\"")
+    
+    if result and result.returncode == 0:
+        print("✅ Successfully installed compatible rich version")
     else:
-        # Let user select a chart
-        selected_chart = st.selectbox(
-            "Select a chart to analyze:",
-            [f["name"] for f in chart_files],
-            key="chart_selector"
-        )
+        print("❌ Failed to install compatible rich version")
         
-        # Show selected chart
-        if selected_chart:
-            st.subheader(f"📊 Selected: {selected_chart}")
-            
-            # Get file content from session state
-            file_content_key = f"file_{selected_chart}"
-            if file_content_key in st.session_state:
-                try:
-                    from PIL import Image
-                    import io
-                    image_bytes = st.session_state[file_content_key]
-                    image = Image.open(io.BytesIO(image_bytes))
-                    st.image(image, caption=selected_chart, use_column_width=True)
-                except:
-                    st.info("Image preview not available")
+        # Try alternative method
+        print("\n2️⃣ Trying alternative fix method...")
+        result = run_command("pip install \"rich==13.7.0\" --force-reinstall")
+        
+        if result and result.returncode == 0:
+            print("✅ Successfully installed rich 13.7.0")
+        else:
+            print("❌ Alternative method also failed")
+
+def verify_streamlit_installation():
+    """Verify streamlit works correctly"""
+    print("\n✅ Verifying Streamlit installation...")
     
-    if selected_chart:
-        col1, col2 = st.columns([2, 1])
+    # Check if streamlit can be imported
+    test_script = """
+import sys
+try:
+    import streamlit
+    print(f"✓ Streamlit version: {streamlit.__version__}")
+    
+    import rich
+    print(f"✓ Rich version: {rich.__version__}")
+    
+    # Check compatibility
+    from packaging import version
+    streamlit_ver = version.parse(streamlit.__version__)
+    rich_ver = version.parse(rich.__version__)
+    
+    if streamlit_ver >= version.parse("1.28.0") and rich_ver >= version.parse("14.0.0"):
+        print("⚠️  WARNING: Potential compatibility issue detected")
+    else:
+        print("✓ Compatibility check passed")
         
-        with col1:
-            st.subheader("🔍 Analysis Options")
-            
-            analysis_focus = st.multiselect(
-                "What to analyze:",
-                ["Support/Resistance", "Trend Direction", "Chart Patterns", 
-                 "Entry/Exit Points", "Risk Assessment", "Volume Analysis"],
-                default=["Support/Resistance", "Trend Direction"]
-            )
-            
-            include_pdf_context = st.checkbox("Reference PDF knowledge", 
-                                            value=bool(st.session_state.knowledge))
-            
-            if st.button("🚀 Analyze with AI", type="primary"):
-                with st.spinner("🔍 AI analyzing chart..."):
-                    # Prepare analysis request
-                    analysis_request = {
-                        "chart": selected_chart,
-                        "focus_areas": analysis_focus,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    
-                    # Get AI analysis
-                    if OPENAI_AVAILABLE:
-                        try:
-                            import openai
-                            
-                            # Prepare context
-                            context = ""
-                            if include_pdf_context and st.session_state.knowledge:
-                                context = "\n\nReference knowledge:\n"
-                                for name, data in st.session_state.knowledge.items():
-                                    context += f"- {name}: {data['text'][:200]}...\n"
-                            
-                            prompt = f"""
-                            Analyze this trading chart: {selected_chart}
-                            
-                            Focus on: {', '.join(analysis_focus)}
-                            
-                            {context}
-                            
-                            Provide detailed analysis including:
-                            1. Key observations
-                            2. Technical insights
-                            3. Trading considerations
-                            4. Risk management tips
-                            
-                            Format as clear, actionable points.
-                            Remember: Educational content only, not financial advice.
-                            """
-                            
-                            response = openai.ChatCompletion.create(
-                                model="gpt-3.5-turbo",
-                                messages=[
-                                    {"role": "system", "content": "You are a professional trading analyst."},
-                                    {"role": "user", "content": prompt}
-                                ],
-                                max_tokens=600
-                            )
-                            
-                            ai_analysis = response.choices[0].message.content
-                            analysis_request["ai_analysis"] = ai_analysis
-                            
-                        except Exception as e:
-                            analysis_request["ai_analysis"] = f"⚠️ AI Analysis Error: {str(e)}\n\nFocus on clear support/resistance levels. Always use proper risk management."
-                    else:
-                        analysis_request["ai_analysis"] = "⚠️ OpenAI API key required for AI analysis."
-                    
-                    # Store analysis
-                    st.session_state.analyses.append(analysis_request)
-                    
-                    # Display results
-                    st.subheader("📊 Analysis Results")
-                    
-                    if "ai_analysis" in analysis_request:
-                        st.markdown(analysis_request["ai_analysis"])
-                    
-                    # Risk assessment
-                    st.markdown("### ⚠️ Risk Assessment")
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        st.metric("Risk Level", "Medium-High")
-                    with col_b:
-                        st.metric("Confidence", "75%")
-                    with col_c:
-                        st.metric("Timeframe", "1-4 Hours")
-                    
-                    # Download analysis
-                    analysis_text = f"""
-                    Chart Analysis Report
-                    ====================
-                    Chart: {analysis_request['chart']}
-                    Date: {analysis_request['timestamp']}
-                    Focus Areas: {', '.join(analysis_request['focus_areas'])}
-                    
-                    Analysis:
-                    {analysis_request.get('ai_analysis', 'No analysis available')}
-                    
-                    ---
-                    Disclaimer: Educational content only. Not financial advice.
-                    """
-                    
-                    st.download_button(
-                        label="💾 Download Report",
-                        data=analysis_text,
-                        file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                        mime="text/plain"
-                    )
+except ImportError as e:
+    print(f"✗ Import error: {e}")
+    sys.exit(1)
+except Exception as e:
+    print(f"✗ Error: {e}")
+    sys.exit(1)
+"""
+    
+    # Write and run test script
+    with open("test_import.py", "w") as f:
+        f.write(test_script)
+    
+    result = run_command("python test_import.py", check=False)
+    
+    # Clean up
+    if os.path.exists("test_import.py"):
+        os.remove("test_import.py")
+    
+    return result and result.returncode == 0
+
+def create_compatible_requirements():
+    """Create a compatible requirements.txt file"""
+    print("\n📝 Creating compatible requirements.txt...")
+    
+    requirements = """# Compatible Streamlit Trading App Requirements
+# Generated by fix script
+
+# Core dependencies
+streamlit==1.28.1
+rich>=10.14.0,<14  # Must be <14 for Streamlit 1.28 compatibility
+
+# Optional dependencies (uncomment as needed)
+# openai>=0.27.0
+# pillow>=9.0.0  # For image processing
+# pymupdf>=1.23.0  # For PDF processing (install locally)
+
+# Development dependencies
+# black>=23.0.0
+# flake8>=6.0.0
+
+# To install:
+# pip install -r requirements.txt
+"""
+    
+    with open("requirements_fixed.txt", "w") as f:
+        f.write(requirements)
+    
+    print("✅ Created requirements_fixed.txt")
+    print("\nTo install all compatible dependencies:")
+    print("pip install -r requirements_fixed.txt")
+
+def install_all_compatible():
+    """Install all dependencies with compatible versions"""
+    print("\n🚀 Installing all compatible dependencies...")
+    
+    commands = [
+        # First upgrade pip
+        "pip install --upgrade pip",
         
-        with col2:
-            st.subheader("📋 Previous Analyses")
-            if st.session_state.analyses:
-                for i, analysis in enumerate(reversed(st.session_state.analyses[-3:])):
-                    with st.expander(f"Analysis #{len(st.session_state.analyses)-i}"):
-                        st.write(f"**Chart:** {analysis['chart'][:30]}...")
-                        st.write(f"**Time:** {analysis['timestamp']}")
-                        st.write(f"**Focus:** {', '.join(analysis['focus_areas'][:2])}...")
-                        
-                        preview = analysis.get('ai_analysis', '')[:100] + "..."
-                        st.write(f"**Preview:** {preview}")
-                        
-                        if st.button("🔍 View Full", key=f"view_full_{i}"):
-                            st.write("**Full Analysis:**")
-                            st.write(analysis.get('ai_analysis', 'No analysis'))
+        # Install streamlit with compatible rich
+        "pip install \"streamlit==1.28.1\" \"rich<14,>=10.14.0\"",
+        
+        # Install markdown-it-py with compatible version
+        "pip install \"markdown-it-py>=2.2.0\"",
+        
+        # Install mdurl
+        "pip install \"mdurl==0.1\"",
+        
+        # Install pygments
+        "pip install \"pygments<3.0.0,>=2.13.0\"",
+    ]
+    
+    for cmd in commands:
+        result = run_command(cmd, check=False)
+        if result and result.returncode != 0:
+            print(f"⚠️  Command had issues: {cmd}")
+    
+    print("\n✅ Installation complete!")
+
+def cleanup_old_installations():
+    """Clean up potentially conflicting installations"""
+    print("\n🧹 Cleaning up old installations...")
+    
+    packages_to_check = ['rich', 'markdown-it-py', 'mdurl', 'pygments']
+    
+    for pkg in packages_to_check:
+        print(f"\nChecking {pkg}...")
+        result = run_command(f"pip show {pkg}", check=False)
+        if result and result.returncode == 0:
+            # Package exists, check version
+            uninstall = input(f"  Found {pkg}. Force reinstall? (y/n): ")
+            if uninstall.lower() == 'y':
+                run_command(f"pip uninstall {pkg} -y", check=False)
+
+def interactive_mode():
+    """Interactive mode for fixing dependencies"""
+    print("\n" + "="*70)
+    print("🎯 STREAMLIT DEPENDENCY FIXER")
+    print("="*70)
+    
+    while True:
+        print("\n📋 Menu:")
+        print("1. Check current environment")
+        print("2. Check for conflicts")
+        print("3. Fix rich dependency only")
+        print("4. Install all compatible dependencies")
+        print("5. Create requirements.txt")
+        print("6. Clean up old installations")
+        print("7. Verify installation")
+        print("8. Run all fixes (recommended)")
+        print("9. Exit")
+        
+        choice = input("\nSelect option (1-9): ").strip()
+        
+        if choice == '1':
+            check_python_environment()
+            get_installed_packages()
+        
+        elif choice == '2':
+            conflicts = check_dependency_conflicts()
+            if conflicts:
+                print("\n❌ Found conflicts:")
+                for conflict in conflicts:
+                    print(f"  - {conflict['package']}: {conflict['installed']} (requires {conflict['required']})")
+                    print(f"    Reason: {conflict['reason']}")
             else:
-                st.info("No analyses yet. Analyze a chart to see results here.")
-
-elif mode == "📚 Learn from PDFs":
-    st.header("📚 Learn from PDFs & Text")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("Add Learning Materials")
+                print("\n✅ No conflicts found!")
         
-        # Option 1: Upload PDF/text
-        uploaded_content = st.file_uploader(
-            "Upload PDF or text file:",
-            type=["pdf", "txt", "md"],
-            help="Upload trading books, articles, or notes"
-        )
+        elif choice == '3':
+            fix_rich_dependency()
         
-        # Option 2: Paste text
-        st.subheader("📝 Or Paste Content Directly")
-        pasted_content = st.text_area(
-            "Paste trading content:",
-            height=200,
-            placeholder="Paste content from trading books, courses, strategies..."
-        )
+        elif choice == '4':
+            install_all_compatible()
         
-        content_name = st.text_input("Title for this content:", "Trading_Material")
+        elif choice == '5':
+            create_compatible_requirements()
         
-        if st.button("🧠 Learn from Content", type="primary"):
-            content_to_learn = ""
-            
-            if uploaded_content:
-                try:
-                    # Read uploaded file
-                    if uploaded_content.type == "text/plain" or uploaded_content.name.endswith('.txt'):
-                        content_to_learn = uploaded_content.read().decode('utf-8')
-                    elif uploaded_content.name.endswith('.pdf'):
-                        # Basic PDF handling - store as reference
-                        content_to_learn = f"[PDF File: {uploaded_content.name}]\n\nFor detailed PDF text extraction, run locally with PyMuPDF installed.\n\nFile uploaded for reference."
-                    else:
-                        content_to_learn = uploaded_content.read().decode('utf-8', errors='ignore')
-                except:
-                    content_to_learn = f"File: {uploaded_content.name}\n\nUploaded for reference."
-            
-            if pasted_content:
-                content_to_learn = pasted_content
-            
-            if content_to_learn:
-                st.session_state.knowledge[content_name] = {
-                    "text": content_to_learn[:5000],
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "source": uploaded_content.name if uploaded_content else "pasted_text"
-                }
-                
-                st.success(f"✅ '{content_name}' added to knowledge base!")
-                st.balloons()
-                
-                # Show preview
-                with st.expander("📋 Preview Content"):
-                    st.text_area("Content", content_to_learn[:1000], height=300)
+        elif choice == '6':
+            cleanup_old_installations()
+        
+        elif choice == '7':
+            if verify_streamlit_installation():
+                print("\n✅ Streamlit is working correctly!")
             else:
-                st.warning("Please upload a file or paste some content.")
-    
-    with col2:
-        st.subheader("📚 Knowledge Base")
-        if st.session_state.knowledge:
-            for name, data in st.session_state.knowledge.items():
-                with st.expander(f"📖 {name[:25]}..." if len(name) > 25 else f"📖 {name}"):
-                    st.write(f"**Added:** {data['date']}")
-                    st.write(f"**Source:** {data.get('source', 'Unknown')}")
-                    st.write(f"**Size:** {len(data['text'])} chars")
-                    
-                    # Quick actions
-                    if st.button(f"Ask about {name[:15]}...", key=f"ask_knowledge_{name}"):
-                        st.session_state.chat_history.append({
-                            "role": "user",
-                            "content": f"Explain the key concepts from {name}"
-                        })
-                        st.rerun()
-                    
-                    if st.button(f"Use in analysis", key=f"use_knowledge_{name}"):
-                        st.info(f"✅ {name} will be referenced in future analyses")
+                print("\n❌ There are still issues with Streamlit")
+        
+        elif choice == '8':
+            print("\n🔄 Running comprehensive fix...")
+            check_python_environment()
+            conflicts = check_dependency_conflicts()
+            if conflicts:
+                fix_rich_dependency()
+            install_all_compatible()
+            verify_streamlit_installation()
+            create_compatible_requirements()
+            print("\n✅ Comprehensive fix complete!")
+        
+        elif choice == '9':
+            print("\n👋 Exiting. Good luck with your trading app!")
+            break
+        
         else:
-            st.info("""
-            **No content added yet.**
-            
-            **Add materials to:**
-            • Teach AI trading concepts
-            • Improve analysis quality
-            • Build reference library
-            
-            **Suggested content:**
-            • Price action principles
-            • Risk management rules
-            • Trading psychology
-            • Strategy descriptions
-            """)
-
-elif mode == "💬 Chat with AI":
-    st.header("💬 Chat with Trading AI")
-    
-    if not OPENAI_AVAILABLE:
-        st.warning("""
-        🔑 **OpenAI API Key Required**
+            print("❌ Invalid choice. Please select 1-9.")
         
-        Enter your API key in the sidebar to enable:
-        • Intelligent trading discussions
-        • PDF content referencing
-        • Chart analysis explanations
-        • Strategy advice
-        """)
+        input("\nPress Enter to continue...")
+
+def quick_fix():
+    """Quick one-command fix"""
+    print("\n⚡ Running quick fix...")
+    
+    # Run the most likely fix
+    result = run_command("pip install \"streamlit==1.28.1\" \"rich<14,>=10.14.0\" --force-reinstall")
+    
+    if result and result.returncode == 0:
+        print("\n✅ Quick fix successful!")
+        
+        # Verify
+        if verify_streamlit_installation():
+            print("✅ Streamlit is now working correctly!")
+        else:
+            print("⚠️  There might still be issues. Run interactive mode for detailed fixes.")
     else:
-        # Display chat history
-        for message in st.session_state.chat_history[-10:]:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        print("\n❌ Quick fix failed. Try interactive mode.")
+
+def main():
+    """Main function"""
+    print("\n" + "="*70)
+    print("🛠️  Streamlit Trading App Dependency Fixer")
+    print("="*70)
+    print("\nThis script fixes the 'rich' dependency conflict with Streamlit")
+    print("Streamlit 1.28.1 requires rich<14, but rich 14.2.0 is installed")
+    print("="*70)
+    
+    # Check if we have command line arguments
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '--quick':
+            quick_fix()
+        elif sys.argv[1] == '--interactive':
+            interactive_mode()
+        elif sys.argv[1] == '--check':
+            check_python_environment()
+            check_dependency_conflicts()
+        elif sys.argv[1] == '--help':
+            print("\nUsage:")
+            print("  python fix_streamlit_deps.py [option]")
+            print("\nOptions:")
+            print("  --quick       : Run quick one-command fix")
+            print("  --interactive : Run interactive mode")
+            print("  --check       : Check for conflicts only")
+            print("  --help        : Show this help")
+            print("\nExamples:")
+            print("  python fix_streamlit_deps.py --quick")
+            print("  python fix_streamlit_deps.py --interactive")
+    else:
+        # Default: ask user
+        print("\nChoose mode:")
+        print("1. Quick fix (recommended)")
+        print("2. Interactive mode (more control)")
+        print("3. Check only")
+        print("4. Exit")
         
-        # Chat input
-        if prompt := st.chat_input("Ask about trading strategies, psychology, or analysis..."):
-            # Add user message
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            # Get AI response
-            with st.chat_message("assistant"):
-                with st.spinner("🤔 Analyzing..."):
-                    try:
-                        import openai
-                        
-                        # Prepare context from knowledge base
-                        context = ""
-                        if st.session_state.knowledge:
-                            context = "\n\nAvailable knowledge base:\n"
-                            for name, data in st.session_state.knowledge.items():
-                                context += f"- {name}: {data['text'][:150]}...\n"
-                        
-                        # Prepare system message
-                        system_message = f"""You are a professional trading coach and analyst.
-                        Provide educational insights about trading.
-                        {context}
-                        
-                        Guidelines:
-                        1. Be clear and actreports
-                        2. Reference uploaded materials when relevant
-                        3. Emphasize risk management
-                        4. Remind this is educational, not advice
-                        5. Trading involves risk of loss"""
-                        
-                        messages = [
-                            {"role": "system", "content": system_message},
-                            {"role": "user", "content": prompt}
-                        ]
-                        
-                        # Add recent conversation for context
-                        for msg in st.session_state.chat_history[-3:-1]:
-                            messages.append(msg)
-                        
-                        response = openai.ChatCompletion.create(
-                            model="gpt-3.5-turbo",
-                            messages=messages,
-                            max_tokens=600,
-                            temperature=0.7
-                        )
-                        
-                        ai_response = response.choices[0].message.content
-                        st.markdown(ai_response)
-                        
-                        # Add to history
-                        st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
-                        
-                    except Exception as e:
-                        error_msg = f"âš ï¸ Error: {str(e)}"
-                        st.error(error_msg)
-                        st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+        choice = input("\nSelect (1-4): ").strip()
         
-        # Chat controls
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("ðŸ—‘ï¸ Clear Chat"):
-                st.session_state.chat_history = []
-                st.rerun()
-        with col2:
-            if st.button("ðŸ’¡ Trading Topics"):
-                topics = [
-                    "Explain support and resistance",
-                    "What is risk-reward ratio?",
-                    "How to manage emotions in trading?",
-                    "Best timeframes for day trading?",
-                    "How to backtest a strategy?"
-                ]
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": "**Suggested topics to explore:**\n\n" + "\n".join([f"â€¢ {t}" for t in topics])
-                })
-                st.rerun()
-        with col3:
-            if st.button("ðŸ“š Use Knowledge Base") and st.session_state.knowledge:
-                st.info(f"Knowledge base active ({len(st.session_state.knowledge)} items)")
+        if choice == '1':
+            quick_fix()
+        elif choice == '2':
+            interactive_mode()
+        elif choice == '3':
+            check_python_environment()
+            check_dependency_conflicts()
+        elif choice == '4':
+            print("Exiting...")
+        else:
+            print("Invalid choice. Running quick fix...")
+            quick_fix()
+    
+    # Final message
+    print("\n" + "="*70)
+    print("📋 Next steps:")
+    print("1. Run your Streamlit app: streamlit run app.py")
+    print("2. If issues persist, run: python fix_streamlit_deps.py --interactive")
+    print("3. For production, use: pip install -r requirements_fixed.txt")
+    print("="*70)
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #666;">
-    <small>
-    âš ï¸ <strong>Educational Tool Only â€¢ Not Financial Advice â€¢ Trading Involves Risk</strong>
-    <br>
-    <small>Upload charts and PDFs for AI-powered analysis</small>
-    </small>
-</div>
-""", unsafe_allow_html=True)
-
-# Help section
-with st.expander("ðŸ†˜ How to Use"):
-    st.markdown("""
-    ### **Complete Workflow:**
-    
-    1. **Upload Files Mode:**
-       - Upload chart screenshots (PNG/JPG)
-       - Upload PDFs/text files
-       - All files stored for analysis
-    
-    2. **Analyze Charts Mode:**
-       - Select uploaded charts
-       - Choose analysis focus
-       - Get AI-powered insights
-       - Download reports
-    2. **Analyze Charts Mode:**
-       - Select uploaded charts
-       - Choose analysis focus
-       - Get AI-powered insights
-       - Download reports
-    3. **Learn from PDFs Mode:**
-       - Upload PDFs or paste text
-       - Build knowledge base
-       - AI learns from content
-    
-    4. **Chat with AI Mode:**
-       - Ask trading questions
-       - Get personalized advice
-       - Reference uploaded materials
-    
-    ### **For Full Features Locally:**
-    ```bash
-    pip install streamlit openai pillow PyMuPDF
-    streamlit run app.py
-    ```
-    """)
-
-# Add styling
-st.markdown("""
-<style>
-    .stButton button {
-        border-radius: 8px;
-        border: 1px solid #4CAF50;
-        transition: all 0.3s;
-    }
-    .stButton button:hover {
-        background-color: #4CAF50;
-        color: white;
-        transform: scale(1.02);
-    }
-    .css-1d391kg {
-        border-radius: 10px;
-        padding: 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-    }
-    .stProgress > div > div {
-        background: linear-gradient(90deg, #4CAF50, #8BC34A);
-    }
-</style>
-""", unsafe_allow_html=True)
+if __name__ == "__main__":
+    main()
