@@ -1,10 +1,7 @@
-# app.py - STREAMLIT CLOUD COMPATIBLE VERSION
+# app.py - MINIMAL VERSION FOR STREAMLIT CLOUD
 import streamlit as st
-import tempfile
 import os
 from datetime import datetime
-import base64
-from io import BytesIO
 
 # Page configuration
 st.set_page_config(
@@ -14,16 +11,16 @@ st.set_page_config(
 )
 
 # Initialize session state
-if 'pdf_knowledge' not in st.session_state:
-    st.session_state.pdf_knowledge = {}
+if 'knowledge' not in st.session_state:
+    st.session_state.knowledge = {}
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
-if 'screenshots_analyzed' not in st.session_state:
-    st.session_state.screenshots_analyzed = []
+if 'analyses' not in st.session_state:
+    st.session_state.analyses = []
 
 # Title
 st.title("📈 Trading AI Assistant")
-st.markdown("### Upload PDFs to learn trading psychology • Upload charts for analysis")
+st.markdown("### Learn Trading • Analyze Charts • Get AI Insights")
 
 # Sidebar
 with st.sidebar:
@@ -47,398 +44,248 @@ with st.sidebar:
     # Mode selection
     mode = st.radio(
         "Select Mode:",
-        ["📚 PDF Learning Mode", "📈 Chart Analysis Mode", "💬 Chat with AI"]
+        ["📚 Learn Trading", "📈 Chart Analysis", "💬 Chat with AI"]
     )
     
     st.markdown("---")
     st.info("""
-    **How it works:**
-    1. Upload trading PDFs/paste text
-    2. Ask questions about content
-    3. Upload chart screenshots
-    4. Get AI analysis with entry levels
+    **Features:**
+    1. Learn from trading content
+    2. Get chart analysis
+    3. AI-powered insights
     """)
-    
-    # Status indicators
-    st.caption("Status:")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("🤖 AI:", "✅" if OPENAI_AVAILABLE else "❌")
-    with col2:
-        st.write("🖼️ Images:", "✅")
-
-# Try imports
-try:
-    from PIL import Image
-    IMAGE_AVAILABLE = True
-except:
-    IMAGE_AVAILABLE = False
-
-# For PDF mode - using text input instead of PyMuPDF
-PDF_AVAILABLE = False  # PyMuPDF not available on Streamlit Cloud by default
 
 # Main app logic
-if mode == "📚 PDF Learning Mode":
-    st.header("📚 Learn Trading from PDFs/Text")
+if mode == "📚 Learn Trading":
+    st.header("📚 Learn Trading Concepts")
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("""
-        ### 📖 Two Ways to Learn:
+        st.subheader("Add Trading Knowledge")
         
-        1. **Upload PDF** (basic text extraction)
-        2. **Paste Text** from trading books/articles
-        """)
-        
-        # Option 1: PDF Upload (limited)
-        uploaded_file = st.file_uploader(
-            "Upload PDF or Text File",
-            type=["pdf", "txt", "md"],
-            help="Upload trading materials to learn from"
+        # Text input for learning
+        content = st.text_area(
+            "Enter trading concepts, strategies, or psychology notes:",
+            height=200,
+            placeholder="Paste content from trading books, courses, or articles..."
         )
         
-        # Option 2: Text Paste
-        st.subheader("📝 Or Paste Content Directly")
-        text_content = st.text_area(
-            "Paste trading book content, strategies, or psychology notes:",
-            height=250,
-            placeholder="Paste content from books like 'Trading in the Zone', 'Market Wizards', or any trading material here..."
-        )
+        content_name = st.text_input("Title for this content:", "Trading_Notes")
         
-        if st.button("🧠 Learn from Content", type="primary"):
-            with st.spinner("Processing content..."):
-                content_name = ""
-                content_text = ""
-                
-                if uploaded_file:
-                    content_name = uploaded_file.name
-                    try:
-                        # Try to read as text file
-                        if uploaded_file.type == "text/plain" or uploaded_file.name.endswith('.txt'):
-                            content_text = uploaded_file.read().decode('utf-8')
-                        elif uploaded_file.name.endswith('.pdf'):
-                            # Basic PDF text extraction without PyMuPDF
-                            st.info("📄 PDF uploaded - extracting text (basic)...")
-                            content_text = f"PDF File: {uploaded_file.name}\n\nFor full PDF text extraction, run this app locally with PyMuPDF installed."
-                        else:
-                            content_text = uploaded_file.read().decode('utf-8', errors='ignore')
-                    except:
-                        content_text = f"File: {uploaded_file.name}\n\nUploaded for reference."
-                
-                if text_content:
-                    content_name = "Pasted_Text"
-                    content_text = text_content
-                
-                if content_text:
-                    # Store in session state
-                    st.session_state.pdf_knowledge[content_name or "Custom_Content"] = {
-                        "text": content_text[:5000],  # Store first 5000 chars
-                        "processed_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "type": "uploaded" if uploaded_file else "pasted"
+        if st.button("💾 Save for AI Learning", type="primary") and content:
+            st.session_state.knowledge[content_name] = {
+                "text": content[:3000],
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            st.success(f"✅ '{content_name}' saved! AI can now reference this.")
+            st.balloons()
+        
+        # Quick content templates
+        with st.expander("📋 Quick Templates"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("Price Action Basics"):
+                    st.session_state.knowledge["Price_Action_Basics"] = {
+                        "text": "Price action trading focuses on reading raw price movements without indicators. Key concepts: support/resistance, trend lines, candlestick patterns, breakouts, and reversals.",
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
-                    
-                    st.success(f"✅ Content learned successfully!")
-                    
-                    # Show preview
-                    with st.expander("📋 Preview Learned Content"):
-                        st.text_area("Content Preview", content_text[:1500], height=300)
-                    
-                    st.balloons()
-                else:
-                    st.warning("Please upload a file or paste some text first.")
+                    st.success("Price action basics loaded!")
+            
+            with col_b:
+                if st.button("Risk Management"):
+                    st.session_state.knowledge["Risk_Management"] = {
+                        "text": "Risk management rules: 1. Risk only 1-2% per trade 2. Use stop losses 3. Maintain positive risk-reward ratios 4. Diversify positions 5. Keep a trading journal.",
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    st.success("Risk management loaded!")
     
     with col2:
         st.subheader("📊 Knowledge Base")
-        if st.session_state.pdf_knowledge:
-            for content_name, data in st.session_state.pdf_knowledge.items():
-                with st.expander(f"📚 {content_name[:30]}..." if len(content_name) > 30 else f"📚 {content_name}"):
-                    st.write(f"**Type:** {data['type']}")
-                    st.write(f"**Learned:** {data['processed_date']}")
-                    st.write(f"**Size:** {len(data['text'])} characters")
-                    
-                    # Quick actions
-                    if st.button(f"Ask about {content_name[:20]}...", key=f"ask_{content_name}"):
+        if st.session_state.knowledge:
+            for name, data in st.session_state.knowledge.items():
+                with st.expander(f"📖 {name}"):
+                    st.write(f"**Saved:** {data['date']}")
+                    st.write(f"**Preview:** {data['text'][:200]}...")
+                    if st.button(f"Ask about {name}", key=f"ask_{name}"):
                         st.session_state.chat_history.append({
-                            "role": "user", 
-                            "content": f"Tell me about the key points from {content_name}"
+                            "role": "user",
+                            "content": f"Explain {name} in detail"
                         })
                         st.rerun()
         else:
             st.info("""
-            **No content learned yet.**
+            **No content saved yet.**
             
-            Upload or paste trading content to build your knowledge base.
-            
-            **Suggested content to paste:**
-            - Price action patterns
-            - Risk management rules
-            - Trading psychology tips
-            - Strategy descriptions
+            Add trading knowledge to:
+            - Teach the AI
+            - Get better responses
+            - Build your learning base
             """)
 
-elif mode == "📈 Chart Analysis Mode":
-    st.header("📈 Analyze Trading Charts")
+elif mode == "📈 Chart Analysis":
+    st.header("📈 Trading Chart Analysis")
     
-    if not IMAGE_AVAILABLE:
-        st.error("Image processing not available. Please install Pillow locally.")
-    else:
-        col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Chart Input")
         
-        with col1:
-            uploaded_image = st.file_uploader(
-                "Upload chart screenshot (PNG, JPG, JPEG)",
-                type=["png", "jpg", "jpeg"],
-                help="Upload screenshots from TradingView, MT4, or any trading platform"
-            )
-            
-            if uploaded_image:
-                image = Image.open(uploaded_image)
-                st.image(image, caption=f"📊 {uploaded_image.name}", use_column_width=True)
+        # Option 1: Describe the chart
+        chart_description = st.text_area(
+            "Describe your chart:",
+            height=150,
+            placeholder="Example: EUR/USD 1H chart showing bullish trend with support at 1.0850 and resistance at 1.0950..."
+        )
+        
+        # Option 2: Upload image (optional)
+        uploaded_file = st.file_uploader(
+            "Or upload chart image (optional):",
+            type=["png", "jpg", "jpeg"]
+        )
+        
+        if uploaded_file:
+            st.image(uploaded_file, caption="Uploaded Chart", width=300)
+        
+        analysis_type = st.selectbox(
+            "Analysis Type:",
+            ["Technical Analysis", "Entry/Exit Points", "Risk Assessment", "Full Analysis"]
+        )
+        
+        if st.button("🔍 Analyze Chart", type="primary"):
+            with st.spinner("Analyzing..."):
+                # Create analysis entry
+                analysis = {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "description": chart_description or f"Chart Image: {uploaded_file.name if uploaded_file else 'No description'}",
+                    "type": analysis_type,
+                    "ai_analysis": ""
+                }
                 
-                # Analysis options
-                st.subheader("🔍 Analysis Settings")
-                analysis_type = st.selectbox(
-                    "Analysis Depth:",
-                    ["Quick Analysis", "Detailed Analysis", "With AI Insights"]
-                )
-                
-                st.markdown("**What to analyze:**")
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    analyze_patterns = st.checkbox("Patterns", True)
-                with col_b:
-                    analyze_levels = st.checkbox("Key Levels", True)
-                with col_c:
-                    analyze_trend = st.checkbox("Trend", True)
-                
-                if st.button("🚀 Analyze This Chart", type="primary"):
-                    with st.spinner("🔍 Analyzing chart..."):
-                        # Simulate analysis (in real app, this would use CV/AI)
-                        analysis = {
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "image_name": uploaded_image.name,
-                            "image_size": f"{image.width}x{image.height}",
-                            "analysis_type": analysis_type,
-                            "patterns": [],
-                            "key_levels": [],
-                            "trend_analysis": "",
-                            "entry_suggestions": [],
-                            "risk_assessment": "Medium",
-                            "confidence": 0.7,
-                            "ai_insights": ""
-                        }
+                # Get AI analysis if OpenAI is available
+                if OPENAI_AVAILABLE and (chart_description or uploaded_file):
+                    try:
+                        import openai
                         
-                        # Generate analysis based on image properties
-                        if analyze_patterns:
-                            analysis["patterns"] = [
-                                "Support/Resistance Zones",
-                                "Price Action Patterns",
-                                "Potential Breakout Areas"
-                            ]
+                        prompt = f"""
+                        Analyze this trading scenario:
                         
-                        if analyze_levels:
-                            # Simulate finding levels based on image
-                            analysis["key_levels"] = [
-                                "Strong Resistance Zone",
-                                "Primary Support Level",
-                                "Secondary Support"
-                            ]
+                        {chart_description if chart_description else "User uploaded a chart image for analysis."}
                         
-                        if analyze_trend:
-                            analysis["trend_analysis"] = "Overall bullish bias with consolidation periods"
+                        Provide {analysis_type.lower()} focusing on:
+                        1. Key observations
+                        2. Trading considerations
+                        3. Risk management
+                        4. Educational insights
                         
-                        # Entry suggestions
-                        analysis["entry_suggestions"] = [
-                            "Consider entry on pullback to support",
-                            "Wait for confirmation above resistance",
-                            "Set stop loss below recent swing low"
-                        ]
-                        
-                        # Get AI insights if OpenAI is available
-                        if OPENAI_AVAILABLE and analysis_type == "With AI Insights":
-                            try:
-                                import openai
-                                
-                                # Prepare prompt for AI
-                                prompt = f"""
-                                Analyze a trading chart screenshot called '{uploaded_image.name}'.
-                                
-                                Based on typical chart analysis, provide:
-                                1. Technical observations
-                                2. Risk management considerations
-                                3. Trading psychology insights
-                                
-                                Be educational and mention that this is not financial advice.
-                                """
-                                
-                                response = openai.ChatCompletion.create(
-                                    model="gpt-3.5-turbo",
-                                    messages=[
-                                        {"role": "system", "content": "You are a professional trading analyst providing educational insights."},
-                                        {"role": "user", "content": prompt}
-                                    ],
-                                    max_tokens=300
-                                )
-                                
-                                analysis["ai_insights"] = response.choices[0].message.content
-                                
-                            except Exception as e:
-                                analysis["ai_insights"] = f"AI Insights: Focus on clear levels and proper risk management. Always trade with a plan."
-                        
-                        # Store in history
-                        st.session_state.screenshots_analyzed.append(analysis)
-                        
-                        # Display results
-                        st.subheader("📊 Analysis Results")
-                        
-                        # Patterns
-                        if analysis["patterns"]:
-                            st.success("**🔍 Detected Patterns:**")
-                            for pattern in analysis["patterns"]:
-                                st.write(f"• {pattern}")
-                        
-                        # Key Levels
-                        if analysis["key_levels"]:
-                            st.info("**📍 Key Levels:**")
-                            for level in analysis["key_levels"]:
-                                st.write(f"• {level}")
-                        
-                        # Trend Analysis
-                        if analysis["trend_analysis"]:
-                            st.warning(f"**📈 Trend:** {analysis['trend_analysis']}")
-                        
-                        # Entry Suggestions
-                        st.markdown("**🎯 Trading Considerations:**")
-                        for suggestion in analysis["entry_suggestions"]:
-                            st.write(f"• {suggestion}")
-                        
-                        # Risk Assessment
-                        st.markdown(f"**⚠️ Risk Assessment:** **{analysis['risk_assessment']}**")
-                        st.progress(analysis["confidence"])
-                        
-                        # AI Insights
-                        if analysis["ai_insights"]:
-                            st.markdown("**🤖 AI Insights:**")
-                            st.write(analysis["ai_insights"])
-                        
-                        # Download button
-                        analysis_text = f"""
-                        Chart Analysis Report
-                        ====================
-                        File: {analysis['image_name']}
-                        Date: {analysis['timestamp']}
-                        Size: {analysis['image_size']}
-                        
-                        Patterns: {', '.join(analysis['patterns'])}
-                        Key Levels: {', '.join(analysis['key_levels'])}
-                        Trend: {analysis['trend_analysis']}
-                        
-                        Entry Suggestions:
-                        {chr(10).join(['- ' + s for s in analysis['entry_suggestions']])}
-                        
-                        Risk: {analysis['risk_assessment']}
-                        Confidence: {analysis['confidence']}
-                        
-                        AI Insights:
-                        {analysis.get('ai_insights', 'N/A')}
+                        Format as clear, actionable points.
+                        Remember: This is educational only, not financial advice.
                         """
                         
-                        st.download_button(
-                            label="💾 Download Analysis Report",
-                            data=analysis_text,
-                            file_name=f"chart_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                            mime="text/plain"
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=[
+                                {"role": "system", "content": "You are a professional trading analyst providing educational insights."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            max_tokens=400
                         )
-        
-        with col2:
-            st.subheader("📋 Analysis History")
-            if st.session_state.screenshots_analyzed:
-                st.write(f"**Total Analyses:** {len(st.session_state.screenshots_analyzed)}")
-                
-                for i, analysis in enumerate(reversed(st.session_state.screenshots_analyzed[-5:])):
-                    with st.expander(f"📊 Analysis #{len(st.session_state.screenshots_analyzed)-i} - {analysis['timestamp'].split()[1]}"):
-                        st.write(f"**Chart:** {analysis['image_name']}")
-                        st.write(f"**Type:** {analysis['analysis_type']}")
                         
-                        if analysis["patterns"]:
-                            st.write(f"**Patterns:** {', '.join(analysis['patterns'][:2])}")
+                        analysis["ai_analysis"] = response.choices[0].message.content
                         
-                        if analysis["key_levels"]:
-                            st.write(f"**Levels:** {', '.join(analysis['key_levels'][:2])}")
-                        
-                        st.write(f"**Risk:** {analysis['risk_assessment']}")
-                        
-                        # Quick action buttons
-                        col_x, col_y = st.columns(2)
-                        with col_x:
-                            if st.button("📈 View Details", key=f"view_{i}"):
-                                st.session_state.show_analysis = analysis
-                                st.rerun()
-                        with col_y:
-                            if st.button("🗑️ Remove", key=f"remove_{i}"):
-                                st.session_state.screenshots_analyzed.remove(analysis)
-                                st.rerun()
-            else:
-                st.info("""
-                **No analyses yet.**
+                    except Exception as e:
+                        analysis["ai_analysis"] = f"AI Analysis: Focus on clear support/resistance levels. Manage risk appropriately. Trading involves risk."
                 
-                Upload a chart screenshot to:
-                - Detect patterns
-                - Identify key levels
-                - Get entry suggestions
-                - Receive AI insights
+                # Store analysis
+                st.session_state.analyses.append(analysis)
                 
-                **Tip:** Use clear, well-lit chart screenshots for best results.
-                """)
+                # Display results
+                st.subheader("📊 Analysis Results")
                 
-                # Example chart analysis
-                with st.expander("🔄 Try Example Analysis"):
-                    if st.button("Run Example Analysis"):
-                        example_analysis = {
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "image_name": "Example_Chart.png",
-                            "patterns": ["Bull Flag Pattern", "Support Zone"],
-                            "key_levels": ["$150 Resistance", "$145 Support"],
-                            "entry_suggestions": ["Buy on breakout above $150", "Stop loss at $144"],
-                            "risk_assessment": "Medium",
-                            "confidence": 0.8
-                        }
-                        st.session_state.screenshots_analyzed.append(example_analysis)
-                        st.success("Example analysis added!")
-                        st.rerun()
+                if analysis["ai_analysis"]:
+                    st.markdown(analysis["ai_analysis"])
+                else:
+                    st.info("""
+                    **Manual Analysis Guidelines:**
+                    
+                    1. **Identify Trend:** Up, down, or sideways
+                    2. **Key Levels:** Support and resistance
+                    3. **Patterns:** Chart patterns if visible
+                    4. **Volume:** Consider volume if data available
+                    5. **Risk:** Always use stop losses
+                    
+                    *Enable OpenAI API for AI-powered analysis*
+                    """)
+                
+                # Risk meter
+                st.markdown("**⚠️ Risk Level:** Medium-High (trading always involves risk)")
+                st.progress(0.6)
+    
+    with col2:
+        st.subheader("📋 Analysis History")
+        if st.session_state.analyses:
+            for i, analysis in enumerate(reversed(st.session_state.analyses[-5:])):
+                with st.expander(f"Analysis #{len(st.session_state.analyses)-i}"):
+                    st.write(f"**Time:** {analysis['timestamp']}")
+                    st.write(f"**Type:** {analysis['type']}")
+                    st.write(f"**Chart:** {analysis['description'][:100]}...")
+                    
+                    if analysis["ai_analysis"]:
+                        st.write("**AI Insights:**")
+                        st.write(analysis["ai_analysis"][:200] + "...")
+                    
+                    col_x, col_y = st.columns(2)
+                    with col_x:
+                        if st.button("View Full", key=f"view_{i}"):
+                            st.write("**Full Analysis:**")
+                            st.write(analysis["ai_analysis"] or "No AI analysis available.")
+                    with col_y:
+                        if st.button("Delete", key=f"delete_{i}"):
+                            st.session_state.analyses.remove(analysis)
+                            st.rerun()
+        else:
+            st.info("""
+            **No analyses yet.**
+            
+            Describe a chart or upload an image to get analysis.
+            
+            **Example descriptions:**
+            - "Bullish trend with strong support"
+            - "Range-bound market between two levels"
+            - "Breakout above resistance with volume"
+            """)
 
 elif mode == "💬 Chat with AI":
-    st.header("💬 Chat with Trading AI")
+    st.header("💬 Trading AI Chat")
     
-    if not OPENAI_AVAILABLE or not openai_api_key:
+    if not OPENAI_AVAILABLE:
         st.warning("""
         🔑 **OpenAI API Key Required**
         
-        To use the AI chat, please:
-        1. Get an API key from [OpenAI](https://platform.openai.com/api-keys)
+        To chat with the AI:
+        1. Get API key from [OpenAI](https://platform.openai.com)
         2. Enter it in the sidebar
-        3. Select this mode again
-        
-        *The chat feature uses GPT-3.5/4 for intelligent trading discussions.*
+        3. Start chatting!
         """)
         
-        # Show chat history even without API key
+        # Show conversation history even without API
         if st.session_state.chat_history:
-            st.subheader("💭 Previous Conversation")
-            for message in st.session_state.chat_history[-10:]:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+            st.subheader("Recent Conversation")
+            for message in st.session_state.chat_history[-5:]:
+                role_icon = "👤" if message["role"] == "user" else "🤖"
+                st.markdown(f"**{role_icon} {message['role'].title()}:**")
+                st.write(message["content"])
+                st.markdown("---")
     else:
-        # Display chat history
-        st.subheader("💭 Conversation")
+        # Display chat
+        st.subheader("Conversation")
         
-        for message in st.session_state.chat_history[-20:]:  # Show last 20 messages
+        for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask about trading psychology, strategies, or analysis..."):
+        if prompt := st.chat_input("Ask about trading..."):
             # Add user message
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
@@ -446,10 +293,120 @@ elif mode == "💬 Chat with AI":
             
             # Get AI response
             with st.chat_message("assistant"):
-                with st.spinner("🤔 Thinking..."):
+                with st.spinner("Thinking..."):
                     try:
                         import openai
                         
-                        # Prepare context from learned PDFs
+                        # Prepare context from saved knowledge
                         context = ""
-               
+                        if st.session_state.knowledge:
+                            context = "Reference knowledge: " + "; ".join([
+                                f"{name}: {data['text'][:100]}..." 
+                                for name, data in st.session_state.knowledge.items()
+                            ])
+                        
+                        # Prepare messages
+                        messages = [
+                            {
+                                "role": "system", 
+                                "content": f"""You are a professional trading coach. 
+                                Provide educational insights about trading psychology, 
+                                technical analysis, and risk management.
+                                {context}
+                                Always remind that this is educational, not financial advice."""
+                            },
+                            {"role": "user", "content": prompt}
+                        ]
+                        
+                        # Add recent conversation context
+                        for msg in st.session_state.chat_history[-4:-1]:
+                            messages.append(msg)
+                        
+                        # Get response
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=messages,
+                            max_tokens=500,
+                            temperature=0.7
+                        )
+                        
+                        ai_response = response.choices[0].message.content
+                        st.markdown(ai_response)
+                        
+                        # Add to history
+                        st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+                        
+                    except Exception as e:
+                        error_msg = f"Error: {str(e)}"
+                        st.error(error_msg)
+                        st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+        
+        # Chat controls
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Clear Chat"):
+                st.session_state.chat_history = []
+                st.rerun()
+        with col2:
+            if st.button("💡 Example Questions"):
+                examples = [
+                    "What is the 1% risk rule?",
+                    "How to identify support and resistance?",
+                    "Explain trend following strategies",
+                    "What is trading psychology?",
+                    "How to create a trading plan?"
+                ]
+                st.info("Try asking: " + " | ".join(examples[:3]))
+
+# Footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; color: #666; padding: 20px;">
+    <small>
+    ⚠️ <strong>Educational Tool Only</strong> • Not Financial Advice • Trading Involves Risk
+    </small>
+</div>
+""", unsafe_allow_html=True)
+
+# Help section
+with st.expander("🆘 Need Help?"):
+    st.markdown("""
+    ### **Quick Start:**
+    
+    1. **Get OpenAI Key:**
+       - Visit: https://platform.openai.com/api-keys
+       - Create free account
+       - Generate API key
+    
+    2. **Enter Key** in sidebar
+    
+    3. **Start Using:**
+       - **Learn Mode:** Add trading knowledge
+       - **Analysis Mode:** Describe/upload charts
+       - **Chat Mode:** Ask trading questions
+    
+    ### **For Developers:**
+    ```bash
+    # Local setup
+    pip install streamlit openai
+    streamlit run app.py
+    ```
+    
+    ### **Source Code:**
+    GitHub: https://github.com/wwwnishantom05-create/trading-ai-assistant
+    """)
+
+# Add some styling
+st.markdown("""
+<style>
+    .stButton button {
+        width: 100%;
+        margin: 5px 0;
+    }
+    .css-1d391kg {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
