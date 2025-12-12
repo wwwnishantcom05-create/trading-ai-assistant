@@ -315,3 +315,11 @@ with st.expander("🚀 Quick Start Guide"):
     3. Add OpenAI API key in Secrets
     4. Your app will be live at: `https://trading-ai-assistant.streamlit.app`
     """)
+# Remove or comment out the PyMuPDF import
+# try:
+#     import fitz  # PyMuPDF
+#     PDF_AVAILABLE = True
+# except:
+#     PDF_AVAILABLE = False
+
+PDF_AVAILABLE = False  # Set to False for now
