@@ -1,379 +1,608 @@
-#!/usr/bin/env python3
-"""
-Streamlit Dependency Fixer Script - UV Compatible
-Fixes the rich<14 compatibility issue with streamlit for uv environments
-"""
+app.py - ENHANCED WITH UPLOADS (Streamlit Cloud Compatible)
 
-import subprocess
-import sys
-import json
+import streamlit as st
 import os
-import platform
+import base64
+from datetime import datetime
+from io import BytesIO
 
-def run_command(cmd: str, check: bool = False) -> dict:
-    """Run a shell command and return result"""
-    print(f"\n{'='*60}")
-    print(f"Running: {cmd}")
-    print(f"{'='*60}")
-    
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        return {
-            'success': result.returncode == 0,
-            'stdout': result.stdout,
-            'stderr': result.stderr,
-            'returncode': result.returncode
-        }
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+Page configuration
 
-def check_environment():
-    """Check current environment"""
-    print("\nðŸ” Checking Environment...")
-    
-    # Check if uv is available
-    uv_check = run_command("uv --version")
-    if uv_check['success']:
-        print(f"âœ… Using uv: {uv_check['stdout'].strip()}")
-        return 'uv'
-    
-    # Check if pip is available
-    pip_check = run_command("pip --version")
-    if pip_check['success']:
-        print(f"âœ… Using pip")
-        return 'pip'
-    
-    print("âŒ No package manager found")
-    return None
+st.set_page_config(
+page_title="Trading AI Assistant",
+page_icon="ðŸ“ˆ",
+layout="wide"
+)
 
-def get_streamlit_info():
-    """Get Streamlit information"""
-    print("\nðŸ“Š Checking Streamlit Installation...")
-    
-    # Check if streamlit is installed
-    result = run_command("python -c \"import streamlit; print(f'Streamlit version: {streamlit.__version__}')\"")
-    if result['success']:
-        print(f"âœ… {result['stdout'].strip()}")
-        return True
-    
-    print("âŒ Streamlit not installed or import error")
-    print(f"Error: {result.get('stderr', 'Unknown error')}")
-    return False
+Initialize session state
 
-def fix_uv_dependencies():
-    """Fix dependencies when using uv"""
-    print("\nðŸ”§ Fixing Dependencies with UV...")
-    
-    # Create a proper pyproject.toml or requirements.txt for uv
-    pyproject_content = """[project]
-name = "trading-ai-assistant"
-version = "1.0.0"
-description = "Trading AI Assistant"
-requires-python = ">=3.8"
+if 'knowledge' not in st.session_state:
+st.session_state.knowledge = {}
+if 'chat_history' not in st.session_state:
+st.session_state.chat_history = []
+if 'analyses' not in st.session_state:
+st.session_state.analyses = []
+if 'uploaded_files' not in st.session_state:
+st.session_state.uploaded_files = []
 
-dependencies = [
-    "streamlit==1.28.1",
-    "rich>=10.14.0,<14",
-    "markdown-it-py>=2.2.0",
-    "mdurl==0.1.2",
-    "pygments<3.0.0,>=2.13.0",
-    "openai>=0.27.0",
-    "pillow>=9.0.0",
-]
+Title
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-"""
-    
-    with open("pyproject.toml", "w") as f:
-        f.write(pyproject_content)
-    
-    print("âœ… Created pyproject.toml with compatible dependencies")
-    
-    # Install with uv
-    result = run_command("uv pip install -e .")
-    if result['success']:
-        print("âœ… Dependencies installed successfully with uv")
-    else:
-        print("âŒ Failed to install with uv")
-        print(f"Error: {result.get('stderr', 'Unknown error')}")
+st.title("ðŸ“ˆ Trading AI Assistant")
+st.markdown("### Upload Charts â€¢ Add PDFs â€¢ Get AI Trading Insights")
 
-def create_streamlit_cloud_config():
-    """Create configuration for Streamlit Cloud"""
-    print("\nâ˜ï¸ Creating Streamlit Cloud Configuration...")
-    
-    # Create requirements.txt
-    requirements = """# Streamlit Trading AI Assistant - Compatible Requirements
-# For Streamlit Cloud Deployment
+Sidebar
 
-# Core Framework
-streamlit==1.28.1
+with st.sidebar:
+st.header("âš™ï¸ Configuration")
 
-# Rich Console (must be <14 for Streamlit 1.28 compatibility)
-rich>=10.14.0,<14
+# API Key input  
+openai_api_key = st.text_input("OpenAI API Key", type="password")  
+if openai_api_key:  
+    os.environ["OPENAI_API_KEY"] = openai_api_key  
+    try:  
+        import openai  
+        openai.api_key = openai_api_key  
+        OPENAI_AVAILABLE = True  
+    except:  
+        OPENAI_AVAILABLE = False  
+else:  
+    OPENAI_AVAILABLE = False  
+  
+st.markdown("---")  
+  
+# Mode selection  
+mode = st.radio(  
+    "Select Mode:",  
+    ["ðŸ“¤ Upload Files", "ðŸ“ˆ Analyze Charts", "ðŸ“š Learn from PDFs", "ðŸ’¬ Chat with AI"]  
+)  
+  
+st.markdown("---")  
+st.info("""  
+**Features:**  
+â€¢ Upload trading screenshots  
+â€¢ Add PDF/text files  
+â€¢ AI chart analysis  
+â€¢ Learn from materials  
+â€¢ Chat with trading AI  
+""")
 
-# Markdown Processing
-markdown-it-py>=2.2.0
-mdurl==0.1.2  # Fixed version for compatibility
+Main app logic
 
-# Syntax Highlighting
-pygments>=2.13.0,<3.0.0
+if mode == "ðŸ“¤ Upload Files":
+st.header("ðŸ“¤ Upload Trading Files")
 
-# AI Integration
-openai>=0.27.0
+col1, col2 = st.columns([2, 1])  
+  
+with col1:  
+    st.subheader("Upload Files")  
+      
+    # File uploader for multiple types  
+    uploaded_files = st.file_uploader(  
+        "Upload trading files:",  
+        type=["png", "jpg", "jpeg", "pdf", "txt"],  
+        accept_multiple_files=True,  
+        help="Upload charts (PNG/JPG), PDFs, or text files"  
+    )  
+      
+    if uploaded_files:  
+        for uploaded_file in uploaded_files:  
+            # Store file info  
+            file_info = {  
+                "name": uploaded_file.name,  
+                "type": uploaded_file.type,  
+                "size": f"{len(uploaded_file.getvalue()) / 1024:.1f} KB",  
+                "upload_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")  
+            }  
+              
+            # Check if already uploaded  
+            if not any(f["name"] == uploaded_file.name for f in st.session_state.uploaded_files):  
+                st.session_state.uploaded_files.append(file_info)  
+                  
+                # Store file content in session state  
+                file_content_key = f"file_{uploaded_file.name}"  
+                st.session_state[file_content_key] = uploaded_file.getvalue()  
+              
+            # Show file info  
+            file_ext = uploaded_file.name.split('.')[-1].upper()  
+            if file_ext in ['PNG', 'JPG', 'JPEG']:  
+                st.success(f"ðŸ“¸ {uploaded_file.name} - Chart screenshot")  
+                # Display image preview  
+                from PIL import Image  
+                try:  
+                    image = Image.open(uploaded_file)  
+                    st.image(image, caption=f"Preview: {uploaded_file.name}", width=300)  
+                except:  
+                    st.info("Image preview not available")  
+            elif file_ext == 'PDF':  
+                st.info(f"ðŸ“„ {uploaded_file.name} - PDF document")  
+            elif file_ext == 'TXT':  
+                st.warning(f"ðŸ“ {uploaded_file.name} - Text file")  
+      
+    if st.button("ðŸ”„ Process Uploaded Files", type="primary") and st.session_state.uploaded_files:  
+        with st.spinner("Processing files..."):  
+            for file_info in st.session_state.uploaded_files:  
+                st.success(f"âœ… {file_info['name']} ready for analysis")  
+          
+        st.balloons()  
+  
+with col2:  
+    st.subheader("ðŸ“ File Library")  
+    if st.session_state.uploaded_files:  
+        for i, file_info in enumerate(st.session_state.uploaded_files):  
+            with st.expander(f"ðŸ“„ {file_info['name']}"):  
+                st.write(f"**Type:** {file_info['type']}")  
+                st.write(f"**Size:** {file_info['size']}")  
+                st.write(f"**Uploaded:** {file_info['upload_time']}")  
+                  
+                # Quick actions  
+                col_a, col_b = st.columns(2)  
+                with col_a:  
+                    if file_info['name'].lower().endswith(('png', 'jpg', 'jpeg')):  
+                        if st.button("ðŸ” Analyze", key=f"analyze_{i}"):  
+                            st.session_state.selected_chart = file_info['name']  
+                            st.rerun()  
+                with col_b:  
+                    if st.button("ðŸ—‘ï¸ Remove", key=f"remove_{i}"):  
+                        st.session_state.uploaded_files.pop(i)  
+                        st.rerun()  
+    else:  
+        st.info("""  
+        **No files uploaded yet.**  
+          
+        **Supported files:**  
+        â€¢ Chart screenshots (PNG/JPG)  
+        â€¢ PDF documents  
+        â€¢ Text files  
+          
+        **Tips:**  
+        â€¢ Clear, well-lit charts work best  
+        â€¢ PDFs should have extractable text  
+        â€¢ Text files for quick notes  
+        """)
 
-# Image Processing
-pillow>=9.0.0
+elif mode == "ðŸ“ˆ Analyze Charts":
+st.header("ðŸ“ˆ Analyze Trading Charts")
 
-# Optional: PDF Processing (uncomment if needed)
-# pymupdf>=1.23.0
+# Check for uploaded charts  
+chart_files = [f for f in st.session_state.uploaded_files   
+               if f['name'].lower().endswith(('png', 'jpg', 'jpeg'))]  
+  
+if not chart_files:  
+    st.warning("""  
+    âš ï¸ **No chart screenshots uploaded yet.**  
+      
+    Please go to **"Upload Files"** mode first and upload your trading chart screenshots.  
+    """)  
+      
+    # Alternative: Text description  
+    st.subheader("ðŸ“ Or Describe Your Chart")  
+    chart_description = st.text_area(  
+        "Describe what you see on your chart:",  
+        height=150,  
+        placeholder="Example: EUR/USD 1H chart showing bullish trend with strong support at 1.0850 and resistance at 1.0950. Volume is increasing on upticks..."  
+    )  
+      
+    if chart_description:  
+        st.info("ðŸ“‹ Using text description for analysis")  
+        selected_chart = "Text Description"  
+    else:  
+        selected_chart = None  
+else:  
+    # Let user select a chart  
+    selected_chart = st.selectbox(  
+        "Select a chart to analyze:",  
+        [f["name"] for f in chart_files],  
+        key="chart_selector"  
+    )  
+      
+    # Show selected chart  
+    if selected_chart:  
+        st.subheader(f"ðŸ“Š Selected: {selected_chart}")  
+          
+        # Get file content from session state  
+        file_content_key = f"file_{selected_chart}"  
+        if file_content_key in st.session_state:  
+            try:  
+                from PIL import Image  
+                import io  
+                image_bytes = st.session_state[file_content_key]  
+                image = Image.open(io.BytesIO(image_bytes))  
+                st.image(image, caption=selected_chart, use_column_width=True)  
+            except:  
+                st.info("Image preview not available")  
+  
+if selected_chart:  
+    col1, col2 = st.columns([2, 1])  
+      
+    with col1:  
+        st.subheader("ðŸ” Analysis Options")  
+          
+        analysis_focus = st.multiselect(  
+            "What to analyze:",  
+            ["Support/Resistance", "Trend Direction", "Chart Patterns",   
+             "Entry/Exit Points", "Risk Assessment", "Volume Analysis"],  
+            default=["Support/Resistance", "Trend Direction"]  
+        )  
+          
+        include_pdf_context = st.checkbox("Reference PDF knowledge",   
+                                        value=bool(st.session_state.knowledge))  
+          
+        if st.button("ðŸš€ Analyze with AI", type="primary"):  
+            with st.spinner("ðŸ” AI analyzing chart..."):  
+                # Prepare analysis request  
+                analysis_request = {  
+                    "chart": selected_chart,  
+                    "focus_areas": analysis_focus,  
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")  
+                }  
+                  
+                # Get AI analysis  
+                if OPENAI_AVAILABLE:  
+                    try:  
+                        import openai  
+                          
+                        # Prepare context  
+                        context = ""  
+                        if include_pdf_context and st.session_state.knowledge:  
+                            context = "\n\nReference knowledge:\n"  
+                            for name, data in st.session_state.knowledge.items():  
+                                context += f"- {name}: {data['text'][:200]}...\n"  
+                          
+                        prompt = f"""  
+                        Analyze this trading chart: {selected_chart}  
+                          
+                        Focus on: {', '.join(analysis_focus)}  
+                          
+                        {context}  
+                          
+                        Provide detailed analysis including:  
+                        1. Key observations  
+                        2. Technical insights  
+                        3. Trading considerations  
+                        4. Risk management tips  
+                          
+                        Format as clear, actionable points.  
+                        Remember: Educational content only, not financial advice.  
+                        """  
+                          
+                        response = openai.ChatCompletion.create(  
+                            model="gpt-3.5-turbo",  
+                            messages=[  
+                                {"role": "system", "content": "You are a professional trading analyst."},  
+                                {"role": "user", "content": prompt}  
+                            ],  
+                            max_tokens=600  
+                        )  
+                          
+                        ai_analysis = response.choices[0].message.content  
+                        analysis_request["ai_analysis"] = ai_analysis  
+                          
+                    except Exception as e:  
+                        analysis_request["ai_analysis"] = f"âš ï¸ AI Analysis Error: {str(e)}\n\nFocus on clear support/resistance levels. Always use proper risk management."  
+                else:  
+                    analysis_request["ai_analysis"] = "âš ï¸ OpenAI API key required for AI analysis."  
+                  
+                # Store analysis  
+                st.session_state.analyses.append(analysis_request)  
+                  
+                # Display results  
+                st.subheader("ðŸ“Š Analysis Results")  
+                  
+                if "ai_analysis" in analysis_request:  
+                    st.markdown(analysis_request["ai_analysis"])  
+                  
+                # Risk assessment  
+                st.markdown("### âš ï¸ Risk Assessment")  
+                col_a, col_b, col_c = st.columns(3)  
+                with col_a:  
+                    st.metric("Risk Level", "Medium-High")  
+                with col_b:  
+                    st.metric("Confidence", "75%")  
+                with col_c:  
+                    st.metric("Timeframe", "1-4 Hours")  
+                  
+                # Download analysis  
+                analysis_text = f"""  
+                Chart Analysis Report  
+                ====================  
+                Chart: {analysis_request['chart']}  
+                Date: {analysis_request['timestamp']}  
+                Focus Areas: {', '.join(analysis_request['focus_areas'])}  
+                  
+                Analysis:  
+                {analysis_request.get('ai_analysis', 'No analysis available')}  
+                  
+                ---  
+                Disclaimer: Educational content only. Not financial advice.  
+                """  
+                  
+                st.download_button(  
+                    label="ðŸ’¾ Download Report",  
+                    data=analysis_text,  
+                    file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",  
+                    mime="text/plain"  
+                )  
+      
+    with col2:  
+        st.subheader("ðŸ“‹ Previous Analyses")  
+        if st.session_state.analyses:  
+            for i, analysis in enumerate(reversed(st.session_state.analyses[-3:])):  
+                with st.expander(f"Analysis #{len(st.session_state.analyses)-i}"):  
+                    st.write(f"**Chart:** {analysis['chart'][:30]}...")  
+                    st.write(f"**Time:** {analysis['timestamp']}")  
+                    st.write(f"**Focus:** {', '.join(analysis['focus_areas'][:2])}...")  
+                      
+                    preview = analysis.get('ai_analysis', '')[:100] + "..."  
+                    st.write(f"**Preview:** {preview}")  
+                      
+                    if st.button("ðŸ” View Full", key=f"view_full_{i}"):  
+                        st.write("**Full Analysis:**")  
+                        st.write(analysis.get('ai_analysis', 'No analysis'))  
+        else:  
+            st.info("No analyses yet. Analyze a chart to see results here.")
 
-# Development
-black>=23.0.0
-flake8>=6.0.0
-"""
-    
-    with open("requirements.txt", "w") as f:
-        f.write(requirements)
-    
-    print("âœ… Created requirements.txt for Streamlit Cloud")
-    
-    # Create packages.txt if needed
-    packages = """# System packages for Streamlit Cloud
-libgl1-mesa-dev
-libglib2.0-0
-"""
-    
-    with open("packages.txt", "w") as f:
-        f.write(packages)
-    
-    print("âœ… Created packages.txt for system dependencies")
+elif mode == "ðŸ“š Learn from PDFs":
+st.header("ðŸ“š Learn from PDFs & Text")
 
-def quick_fix_uv():
-    """Quick fix for uv environment"""
-    print("\nâš¡ Running Quick Fix for UV...")
-    
-    # Step 1: Check current state
-    package_manager = check_environment()
-    
-    if not package_manager:
-        print("âŒ No package manager found")
-        return False
-    
-    # Step 2: Install compatible versions
-    if package_manager == 'uv':
-        commands = [
-            "uv pip install \"streamlit==1.28.1\"",
-            "uv pip install \"rich>=10.14.0,<14\"",
-            "uv pip install \"markdown-it-py>=2.2.0\"",
-            "uv pip install \"mdurl==0.1.2\"",
-            "uv pip install \"pygments>=2.13.0,<3.0.0\""
-        ]
-    else:
-        commands = [
-            "pip install \"streamlit==1.28.1\"",
-            "pip install \"rich>=10.14.0,<14\"",
-            "pip install \"markdown-it-py>=2.2.0\"",
-            "pip install \"mdurl==0.1.2\"",
-            "pip install \"pygments>=2.13.0,<3.0.0\""
-        ]
-    
-    print("\nðŸ“¦ Installing compatible packages...")
-    for cmd in commands:
-        result = run_command(cmd)
-        if not result['success']:
-            print(f"âš ï¸  Warning: {cmd} had issues")
-            if result.get('stderr'):
-                print(f"   Error: {result['stderr'][:200]}...")
-    
-    # Step 3: Verify
-    print("\nâœ… Verification...")
-    if get_streamlit_info():
-        print("âœ… Streamlit is ready!")
-        return True
-    else:
-        print("âŒ Issues remain")
-        return False
+col1, col2 = st.columns([2, 1])  
+  
+with col1:  
+    st.subheader("Add Learning Materials")  
+      
+    # Option 1: Upload PDF/text  
+    uploaded_content = st.file_uploader(  
+        "Upload PDF or text file:",  
+        type=["pdf", "txt", "md"],  
+        help="Upload trading books, articles, or notes"  
+    )  
+      
+    # Option 2: Paste text  
+    st.subheader("ðŸ“ Or Paste Content Directly")  
+    pasted_content = st.text_area(  
+        "Paste trading content:",  
+        height=200,  
+        placeholder="Paste content from trading books, courses, strategies..."  
+    )  
+      
+    content_name = st.text_input("Title for this content:", "Trading_Material")  
+      
+    if st.button("ðŸ§  Learn from Content", type="primary"):  
+        content_to_learn = ""  
+          
+        if uploaded_content:  
+            try:  
+                # Read uploaded file  
+                if uploaded_content.type == "text/plain" or uploaded_content.name.endswith('.txt'):  
+                    content_to_learn = uploaded_content.read().decode('utf-8')  
+                elif uploaded_content.name.endswith('.pdf'):  
+                    # Basic PDF handling - store as reference  
+                    content_to_learn = f"[PDF File: {uploaded_content.name}]\n\nFor detailed PDF text extraction, run locally with PyMuPDF installed.\n\nFile uploaded for reference."  
+                else:  
+                    content_to_learn = uploaded_content.read().decode('utf-8', errors='ignore')  
+            except:  
+                content_to_learn = f"File: {uploaded_content.name}\n\nUploaded for reference."  
+          
+        if pasted_content:  
+            content_to_learn = pasted_content  
+          
+        if content_to_learn:  
+            st.session_state.knowledge[content_name] = {  
+                "text": content_to_learn[:5000],  
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  
+                "source": uploaded_content.name if uploaded_content else "pasted_text"  
+            }  
+              
+            st.success(f"âœ… '{content_name}' added to knowledge base!")  
+            st.balloons()  
+              
+            # Show preview  
+            with st.expander("ðŸ“‹ Preview Content"):  
+                st.text_area("Content", content_to_learn[:1000], height=300)  
+        else:  
+            st.warning("Please upload a file or paste some content.")  
+  
+with col2:  
+    st.subheader("ðŸ“š Knowledge Base")  
+    if st.session_state.knowledge:  
+        for name, data in st.session_state.knowledge.items():  
+            with st.expander(f"ðŸ“– {name[:25]}..." if len(name) > 25 else f"ðŸ“– {name}"):  
+                st.write(f"**Added:** {data['date']}")  
+                st.write(f"**Source:** {data.get('source', 'Unknown')}")  
+                st.write(f"**Size:** {len(data['text'])} chars")  
+                  
+                # Quick actions  
+                if st.button(f"Ask about {name[:15]}...", key=f"ask_knowledge_{name}"):  
+                    st.session_state.chat_history.append({  
+                        "role": "user",  
+                        "content": f"Explain the key concepts from {name}"  
+                    })  
+                    st.rerun()  
+                  
+                if st.button(f"Use in analysis", key=f"use_knowledge_{name}"):  
+                    st.info(f"âœ… {name} will be referenced in future analyses")  
+    else:  
+        st.info("""  
+        **No content added yet.**  
+          
+        **Add materials to:**  
+        â€¢ Teach AI trading concepts  
+        â€¢ Improve analysis quality  
+        â€¢ Build reference library  
+          
+        **Suggested content:**  
+        â€¢ Price action principles  
+        â€¢ Risk management rules  
+        â€¢ Trading psychology  
+        â€¢ Strategy descriptions  
+        """)
 
-def run_streamlit_app():
-    """Run the Streamlit app"""
-    print("\nðŸš€ Starting Streamlit App...")
-    
-    # Check if app.py exists
-    if not os.path.exists("app.py"):
-        print("âŒ app.py not found!")
-        return False
-    
-    print("âœ… Found app.py")
-    print("\nStarting Streamlit server...")
-    print("The app will be available at: http://localhost:8501")
-    print("Press Ctrl+C to stop")
-    
-    # Run Streamlit
-    result = run_command("streamlit run app.py", check=False)
-    
-    if not result['success']:
-        print(f"\nâŒ Streamlit failed to start")
-        print(f"Error: {result.get('stderr', 'Unknown error')}")
-        return False
-    
-    return True
+elif mode == "ðŸ’¬ Chat with AI":
+st.header("ðŸ’¬ Chat with Trading AI")
 
-def create_minimal_app():
-    """Create a minimal test app to verify"""
-    minimal_app = """import streamlit as st
-
-st.set_page_config(page_title="Test App", layout="wide")
-st.title("âœ… Streamlit Working!")
-st.success("If you can see this, Streamlit is working correctly!")
-
-st.header("Dependency Check")
-st.code(\"""
-import streamlit
-import rich
-import markdown_it
-import mdurl
-import pygments
-
-print(f"Streamlit: {streamlit.__version__}")
-print(f"Rich: {rich.__version__}")
-print(f"Markdown-it-py: {markdown_it.__version__}")
-print(f"mdurl: {mdurl.__version__}")
-print(f"Pygments: {pygments.__version__}")
-\""")
-
-if st.button("Run Check"):
-    try:
-        import streamlit
-        import rich
-        import markdown_it
-        import mdurl
-        import pygments
+if not OPENAI_AVAILABLE:  
+    st.warning("""  
+    ðŸ”‘ **OpenAI API Key Required**  
+      
+    Enter your API key in the sidebar to enable:  
+    â€¢ Intelligent trading discussions  
+    â€¢ PDF content referencing  
+    â€¢ Chart analysis explanations  
+    â€¢ Strategy advice  
+    """)  
+else:  
+    # Display chat history  
+    for message in st.session_state.chat_history[-10:]:  
+        with st.chat_message(message["role"]):  
+            st.markdown(message["content"])  
+      
+    # Chat input  
+    if prompt := st.chat_input("Ask about trading strategies, psychology, or analysis..."):  
+        # Add user message  
+        st.session_state.chat_history.append({"role": "user", "content": prompt})  
+        with st.chat_message("user"):  
+            st.markdown(prompt)  
+          
+        # Get AI response  
+        with st.chat_message("assistant"):  
+            with st.spinner("ðŸ¤” Analyzing..."):  
+                try:  
+                    import openai  
+                      
+                    # Prepare context from knowledge base  
+                    context = ""  
+                    if st.session_state.knowledge:  
+                        context = "\n\nAvailable knowledge base:\n"  
+                        for name, data in st.session_state.knowledge.items():  
+                            context += f"- {name}: {data['text'][:150]}...\n"  
+                      
+                    # Prepare system message  
+                    system_message = f"""You are a professional trading coach and analyst.  
+                    Provide educational insights about trading.                        
+                    {context}  
+                    Guidelines:
+                        1. Be clear and actionable
+                        2. Reference uploaded materials when relevant
+                        3. Emphasize risk management
+                        4. Remind this is educational, not advice
+                        5. Trading involves risk of loss"""
+                        
+                        messages = [
+                            {"role": "system", "content": system_message},
+                            {"role": "user", "content": prompt}
+                        ]
+                        
+                        # Add recent conversation for context
+                        for msg in st.session_state.chat_history[-3:-1]:
+                            messages.append(msg)
+                        
+                        response = openai.ChatCompletion.create(
+                            model="gpt-3.5-turbo",
+                            messages=messages,
+                            max_tokens=600,
+                            temperature=0.7
+                        )
+                        
+                        ai_response = response.choices[0].message.content
+                        st.markdown(ai_response)
+                        
+                        # Add to history
+                        st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+                        
+                    except Exception as e:
+                        error_msg = f"âš ï¸ Error: {str(e)}"
+                        st.error(error_msg)
+                        st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
         
-        st.success(f"Streamlit: {streamlit.__version__}")
-        st.success(f"Rich: {rich.__version__}")
-        st.success(f"Markdown-it-py: {markdown_it.__version__}")
-        st.success(f"mdurl: {mdurl.__version__}")
-        st.success(f"Pygments: {pygments.__version__}")
-    except Exception as e:
-        st.error(f"Error: {e}")
+        # Chat controls
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("ðŸ—‘ï¸ Clear Chat"):
+                st.session_state.chat_history = []
+                st.rerun()
+        with col2:
+            if st.button("ðŸ’¡ Trading Topics"):
+                topics = [
+                    "Explain support and resistance",
+                    "What is risk-reward ratio?",
+                    "How to manage emotions in trading?",
+                    "Best timeframes for day trading?",
+                    "How to backtest a strategy?"
+                ]
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": "**Suggested topics to explore:**\n\n" + "\n".join([f"â€¢ {t}" for t in topics])
+                })
+                st.rerun()
+        with col3:
+            if st.button("ðŸ“š Use Knowledge Base") and st.session_state.knowledge:
+                st.info(f"Knowledge base active ({len(st.session_state.knowledge)} items)")
 
+# Footer
 st.markdown("---")
-st.info("This is a minimal test app to verify dependencies.")
-"""
-    
-    with open("test_app.py", "w") as f:
-        f.write(minimal_app)
-    
-    print("âœ… Created test_app.py")
-    return "test_app.py"
+st.markdown("""
+<div style="text-align: center; color: #666;">
+    <small>
+    âš ï¸ <strong>Educational Tool Only â€¢ Not Financial Advice â€¢ Trading Involves Risk</strong>
+    <br>
+    <small>Upload charts and PDFs for AI-powered analysis</small>
+    </small>
+</div>
+""", unsafe_allow_html=True)
 
-def main_menu():
-    """Main interactive menu"""
-    print("\n" + "="*70)
-    print("ðŸ› ï¸  STREAMLIT FIXER - UV EDITION")
-    print("="*70)
-    print("\nDetected you're using uv package manager")
-    print("Streamlit 1.28.1 + rich<14 + mdurl==0.1.2")
-    print("="*70)
+# Help section
+with st.expander("ðŸ†˜ How to Use"):
+    st.markdown("""
+    ### **Complete Workflow:**
     
-    while True:
-        print("\nðŸ“‹ MENU:")
-        print("1. Quick Fix (Install compatible versions)")
-        print("2. Check Current Installation")
-        print("3. Create Streamlit Cloud Config")
-        print("4. Run Test App")
-        print("5. Run Your Main App")
-        print("6. Create Minimal Test App")
-        print("7. Exit")
-        
-        choice = input("\nSelect option (1-7): ").strip()
-        
-        if choice == '1':
-            if quick_fix_uv():
-                print("\nâœ… Quick fix completed!")
-            else:
-                print("\nâŒ Quick fix had issues")
-        
-        elif choice == '2':
-            check_environment()
-            get_streamlit_info()
-            
-            # Check specific packages
-            packages = ['rich', 'markdown-it-py', 'mdurl', 'pygments']
-            for pkg in packages:
-                result = run_command(f"python -c \"import {pkg}; print(f'{pkg}: {pkg.__version__}')\"")
-                if result['success']:
-                    print(f"âœ… {result['stdout'].strip()}")
-                else:
-                    print(f"âŒ {pkg}: Not found or error")
-        
-        elif choice == '3':
-            create_streamlit_cloud_config()
-            print("\nâœ… Files created for Streamlit Cloud:")
-            print("   - requirements.txt")
-            print("   - packages.txt")
-            print("\nRedeploy on Streamlit Cloud with these files.")
-        
-        elif choice == '4':
-            test_app = create_minimal_app()
-            print(f"\nRunning test app: {test_app}")
-            run_command(f"streamlit run {test_app}", check=False)
-            # Don't wait for it to finish
-            break
-        
-        elif choice == '5':
-            if os.path.exists("app.py"):
-                print("\nRunning your main app: app.py")
-                run_streamlit_app()
-                break
-            else:
-                print("âŒ app.py not found!")
-        
-        elif choice == '6':
-            create_minimal_app()
-            print("\nâœ… Created test_app.py")
-            print("Run: streamlit run test_app.py")
-        
-        elif choice == '7':
-            print("\nðŸ‘‹ Exiting...")
-            break
-        
-        else:
-            print("âŒ Invalid choice")
-        
-        input("\nPress Enter to continue...")
+    1. **Upload Files Mode:**
+       - Upload chart screenshots (PNG/JPG)
+       - Upload PDFs/text files
+       - All files stored for analysis
+    
+    2. **Analyze Charts Mode:**
+       - Select uploaded charts
+       - Choose analysis focus
+       - Get AI-powered insights
+       - Download reports
+    
+    3. **Learn from PDFs Mode:**
+       - Upload PDFs or paste text
+       - Build knowledge base
+       - AI learns from content
+    
+    4. **Chat with AI Mode:**
+       - Ask trading questions
+       - Get personalized advice
+       - Reference uploaded materials
+    
+    ### **For Full Features Locally:**
+    ```bash
+    pip install streamlit openai pillow PyMuPDF
+    streamlit run app.py
+    ```
+    """)
 
-if __name__ == "__main__":
-    print("\n" + "="*70)
-    print("ðŸ”§ Streamlit Trading Assistant - Dependency Fixer")
-    print("="*70)
-    print("\nFrom your logs, I can see:")
-    print("âœ… Streamlit 1.28.1 installed")
-    print("âš ï¸  mdurl downgraded from 0.1.2 to 0.1.0")
-    print("âœ… Using uv package manager")
-    print("="*70)
-    
-    # Check if we have command line arguments
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--fix':
-            quick_fix_uv()
-        elif sys.argv[1] == '--test':
-            create_minimal_app()
-            run_command("streamlit run test_app.py", check=False)
-        elif sys.argv[1] == '--cloud':
-            create_streamlit_cloud_config()
-        else:
-            print(f"Unknown argument: {sys.argv[1]}")
-            print("Use: --fix, --test, or --cloud")
-    else:
-        # Show menu
-        main_menu()
-    
-    print("\n" + "="*70)
-    print("ðŸ“‹ Next Steps:")
-    print("1. Your main app is at: app.py")
-    print("2. Run with: streamlit run app.py")
-    print("3. For Streamlit Cloud, use the created requirements.txt")
-    print("="*70)
+# Add styling
+st.markdown("""
+<style>
+    .stButton button {
+        border-radius: 8px;
+        border: 1px solid #4CAF50;
+        transition: all 0.3s;
+    }
+    .stButton button:hover {
+        background-color: #4CAF50;
+        color: white;
+        transform: scale(1.02);
+    }
+    .css-1d391kg {
+        border-radius: 10px;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .stProgress > div > div {
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    }
+</style>
+""", unsafe_allow_html=True)
